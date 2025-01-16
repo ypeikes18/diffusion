@@ -6,8 +6,9 @@ from mnist import get_data_loader
 
 import torch.nn as nn
 from image_net import SubNet
+from utils.debug_utils import debug_print
 
-class Diffusion(t.nn.Module):
+class Diffusion(t.nn.Module, in_channels=1):
 
   def __init__(self):
     super().__init__()
@@ -19,7 +20,7 @@ class Diffusion(t.nn.Module):
     self.alpha_bars = t.cumprod(self.alphas, dim=0)
     self.sqrt_alpha_bars = t.sqrt(self.alpha_bars)
     self.sqrt_one_minus_alpha_bars = t.sqrt(1-self.alpha_bars)
-    self.subnet = SubNet()
+    self.subnet = SubNet(in_channels=in_channels)
 
   def forward_process(self, x: t.Tensor, time_step: int) -> t.Tensor:
     """
@@ -37,25 +38,7 @@ class Diffusion(t.nn.Module):
     return np.random.randint(1, self.training_time_steps+1)
 
 
-def add_channel_with_value(tensor, value):
-  """Adds a channel filled with a specific value to a tensor.
-
-  Args:
-    tensor: The input tensor with shape (batch, channels, rows, columns).
-    value: The value to fill the new channel with.
-
-  Returns:
-    The tensor with the added channel.
-  """
-  batch_size, channels, rows, cols = tensor.shape
-
-  new_channel = t.full((batch_size, 1, rows, cols), value, dtype=tensor.dtype, device=tensor.device)
-  result = t.cat([tensor, new_channel], dim=1)
-  return result
-
-
-
-model = Diffusion()
+model = Diffusion(in_channels=1)
 optimizer = t.optim.Adam(model.parameters(), lr=1e-4)
 debug=False
 epochs = 1
@@ -64,19 +47,12 @@ batch_size = 32
 print_intervals = 1
 
 
-def debug_print(string):
-  if debug:
-    print(string)
+
 losses = []
 for epoch in range(epochs):
     for i ,(batch, labels) in enumerate(get_data_loader()):
-        time_step  = random.sample([1], 1)[0]
-        debug_print(f"BATCH SHAPE {batch.shape}")
-        debug_print(f"TIME_STEP {time_step}")
-        batch = add_channel_with_value(batch, time_step)
-        debug_print(f"BATCH SHAPE {batch.shape}")
-        noisy_data = model.forward_process(batch, model.get_time_step())
-        debug_print(f"NOISY_DATA SHAPE {batch.shape}")
+        # For now hard code the time step to 1 to see if it works
+        noisy_data = model.forward_process(batch, 1)
         noise = noisy_data - batch
         predicted_noise = model.forward(noisy_data)
 
@@ -90,5 +66,4 @@ for epoch in range(epochs):
         if i % print_intervals == 0:
             print(f"Epoch [{epoch+1}/{epochs}], Batch [{i+1}/{batches}], Loss: {loss.item():.4f}")
 
-plt.plot(losses, label="loss")
-plt.show()
+breakpoint()

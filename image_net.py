@@ -2,7 +2,7 @@ import torch as t
 import torch.nn as nn
 
 class SubNet(nn.Module):
-    def __init__(self, in_channels=2):
+    def __init__(self, in_channels=1):
         super(SubNet, self).__init__()
         self.in_channels = in_channels
 
