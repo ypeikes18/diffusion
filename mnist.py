@@ -40,9 +40,9 @@ class MNISTDataset(Dataset):
         return (train_images, train_labels), (test_images, test_labels)
 
     
-def get_data_loader():
+def get_data_loader(batch_size):
     train_dataset = MNISTDataset()
-    return DataLoader(train_dataset, batch_size=64, shuffle=True)
+    return DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
 
 

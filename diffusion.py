@@ -1,16 +1,14 @@
 import torch as t
 import random
-import matplotlib.pyplot as plt
 import numpy as np
 from mnist import get_data_loader
 
 import torch.nn as nn
 from image_net import SubNet
-from utils.debug_utils import debug_print
 
-class Diffusion(t.nn.Module, in_channels=1):
+class Diffusion(t.nn.Module):
 
-  def __init__(self):
+  def __init__(self, in_channels=1):
     super().__init__()
     self.beta_start = 10 ** -3
     self.beta_stop = 10 ** -1
@@ -36,34 +34,25 @@ class Diffusion(t.nn.Module, in_channels=1):
 
   def get_time_step(self):
     return np.random.randint(1, self.training_time_steps+1)
+  
+  def train(self, epochs=1, batch_size=64, print_intervals=1, debug=False, batches=float('inf'), time_steps=None):
+    optimizer = t.optim.Adam(self.parameters(), lr=1e-4)
+    self.losses = []
+
+    for epoch in range(epochs):
+        for i ,(batch, labels) in enumerate(get_data_loader(batch_size)):
+            if i >= batches:
+              break
+            noisy_data = self.forward_process(batch, time_steps or self.get_time_step())
+            noise = noisy_data - batch
+            predicted_noise = self.forward(noisy_data)
+
+            loss = t.nn.MSELoss()(noise, predicted_noise)
+            self.losses.append(loss.detach().numpy())
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
 
-model = Diffusion(in_channels=1)
-optimizer = t.optim.Adam(model.parameters(), lr=1e-4)
-debug=False
-epochs = 1
-batches = 1000
-batch_size = 32
-print_intervals = 1
-
-
-
-losses = []
-for epoch in range(epochs):
-    for i ,(batch, labels) in enumerate(get_data_loader()):
-        # For now hard code the time step to 1 to see if it works
-        noisy_data = model.forward_process(batch, 1)
-        noise = noisy_data - batch
-        predicted_noise = model.forward(noisy_data)
-
-        loss = t.nn.MSELoss()(noise, predicted_noise)
-        losses.append(loss.detach().numpy())
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-
-        if i % print_intervals == 0:
-            print(f"Epoch [{epoch+1}/{epochs}], Batch [{i+1}/{batches}], Loss: {loss.item():.4f}")
-
-breakpoint()
+            if i % print_intervals == 0:
+              print(f"Epoch [{epoch+1}/{epochs}], Batch [{i+1}/{batches}], Loss: {loss.item():.4f}")
