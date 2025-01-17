@@ -1,8 +1,7 @@
 import torch as t
 import random
 import numpy as np
-from mnist import get_data_loader
-
+from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 from image_net import SubNet
 
@@ -25,25 +24,34 @@ class Diffusion(t.nn.Module):
     :param x: tensor with shape (batch, channels, d_image, d_image)
     """
     time_step_index = time_step - 1
-    assert self.training_time_steps >= time_step > 0
+    assert self.training_time_steps > time_step_index >= 0
     epsilon = t.normal(0,1,x.shape)
     return self.sqrt_alpha_bars[time_step_index] * x + (self.sqrt_one_minus_alpha_bars[time_step_index]) * epsilon
 
   def forward(self, x):
     return self.subnet.forward(x)
 
-  def get_time_step(self):
-    return np.random.randint(1, self.training_time_steps+1)
+  def get_time_step(self,time_step_dim=1):
+    return t.randint(1, self.training_time_steps+1, (time_step_dim,))
   
-  def train(self, epochs=1, batch_size=64, print_intervals=1, debug=False, batches=float('inf'), time_steps=None):
-    optimizer = t.optim.Adam(self.parameters(), lr=1e-4)
+  def train(self,
+  data: Dataset, 
+  epochs: int=1, 
+  batch_size: int =64, 
+  print_intervals: int=1, 
+  debug: bool=False, 
+  batches: int=float('inf'), 
+  time_steps: int=None, 
+  lr: float=1e-4):
+    data = DataLoader(data, batch_size=batch_size, shuffle=True)
+    optimizer = t.optim.Adam(self.parameters(), lr=lr)
     self.losses = []
 
     for epoch in range(epochs):
-        for i ,(batch, labels) in enumerate(get_data_loader(batch_size)):
+        for i ,(batch, labels) in enumerate(data):
             if i >= batches:
               break
-            noisy_data = self.forward_process(batch, time_steps or self.get_time_step())
+            noisy_data = self.forward_process(batch, random.randint(1,time_steps+1) if time_steps else self.get_time_step())
             noise = noisy_data - batch
             predicted_noise = self.forward(noisy_data)
 
