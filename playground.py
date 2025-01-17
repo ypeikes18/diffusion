@@ -13,7 +13,7 @@ print(data)
 print(data.train_images.shape)
 model = Diffusion(in_channels=1)
 
-model.train(data, epochs=1, batch_size=64, print_intervals=1, debug=True, lr=3e-5)
+model.train(data, epochs=10, batch_size=64, print_intervals=1, debug=True, lr=3e-5)
 model.losses = get_moving_average(model.losses, 10)
 
 # %%
