@@ -13,11 +13,9 @@ class ConvNdKwargs:
     stride: int=1
     padding: int=1
 
-
-
 def create_nd_conv(conv_dims: Literal[1,2,3]=2, **kwargs: ConvNdKwargs) -> nn.Module:
+    # populates kwargs with defaults for any ommited parameters
     kwargs = asdict(ConvNdKwargs(**kwargs))
-    # TODO: the above might not handle defaults
     if conv_dims == 1:
         return nn.Conv1d(**kwargs)
     elif conv_dims == 2:
@@ -49,24 +47,19 @@ class UpBlock(nn.Module):
     in_channels: int=3, 
     out_channels: int=3, 
     conv_dims: Literal[1,2,3]=2, 
-    conv_dims_out_shape: tuple[int], 
-    use_conv: bool = True):
+    conv_dims_out_shape: tuple[int]):
         super().__init__()
         self.relu = nn.ReLU()
         self.conv_dims_out_shape = conv_dims_out_shape
         self.in_channels = in_channels
         self.out_channels = out_channels
-        if use_conv:
-            self.conv = create_nd_conv(conv_dims=conv_dims, in_channels=self.in_channels, out_channels=self.out_channels, kernel_size=3, stride=1, padding=1)
-        self.use_conv = use_conv
+        self.conv = create_nd_conv(conv_dims=conv_dims, in_channels=self.in_channels, out_channels=self.out_channels, kernel_size=3, stride=1, padding=1)
         
 
     def forward(self, x, skip_connection):
-        breakpoint()
         x = F.interpolate(x, size=self.conv_dims_out_shape, mode='nearest')
-        x = t.cat([x, skip_connection], dim=1)
-        if self.use_conv:
-            x = self.conv(x)
+        x = self.conv(x)
+        x += skip_connection
         return self.relu(x)
     
 
@@ -78,8 +71,17 @@ class UNet(nn.Module):
         self.num_up_down_blocks = num_up_down_blocks
         self.conv_dims = conv_dims
         self.channel_multiplier = channel_multiplier
-        self.down_blocks = nn.ModuleDict()
-        self.up_blocks = nn.ModuleDict()
+        self.down_blocks = nn.ModuleList()
+        self.up_blocks = nn.ModuleList()
+        self.out_layer = nn.Sequential(
+            create_nd_conv(conv_dims=conv_dims, in_channels=self.in_channels, out_channels=channel_multiplier, kernel_size=3, stride=1, padding=1), 
+            nn.ReLU(),
+            create_nd_conv(conv_dims=conv_dims, in_channels=channel_multiplier, out_channels=channel_multiplier, kernel_size=3, stride=1, padding=1), 
+            nn.ReLU(),
+            create_nd_conv(conv_dims=conv_dims, in_channels=channel_multiplier, out_channels=self.channel_multiplier, kernel_size=3, stride=1, padding=1), 
+            nn.ReLU(),
+            create_nd_conv(conv_dims=conv_dims, in_channels=channel_multiplier, out_channels=self.in_channels, kernel_size=3, stride=1, padding=1), 
+        )
         self._initialize_blocks()
         self._validate_initialization()
 
@@ -94,16 +96,12 @@ class UNet(nn.Module):
         :param x: input tensor of shape (batch_size, channels, *conv_dims_out_shape)
         """
         skip_connections = []
-        # (64, 1, 28, 28) -> (64, 64, 14, 14) -> (64, 128, 7, 7) -> (64, 256, 4, 4)
-        # -> (64, 128, 7, 7) -> (64, 256, 14, 14) -> (64, 1, 28, 28)
-        for i in range(self.num_up_down_blocks):
+        for down_block in self.down_blocks:
             skip_connections.append(x.clone())
-            print(f"down{i} shape: {x.shape}")
-            x = self.down_blocks[f'down{i}'](x)
-        for i in range(self.num_up_down_blocks):
-            x = self.up_blocks[f'up{i}'](x, skip_connections.pop())
-            print(f"up{i} shape: {x.shape}")
-        return x
+            x = down_block(x)
+        for i in range(self.num_up_down_blocks-1,-1,-1):
+            x = self.up_blocks[i](x, skip_connections.pop())
+        return self.out_layer(x)
     
 
     def _initialize_blocks(self) -> None:
@@ -113,19 +111,16 @@ class UNet(nn.Module):
             channel_multiplier_factor: int = self.channel_multiplier * (2 ** i)
             down_block_out_channels: int = self.in_channels * channel_multiplier_factor
             conv_dims_out_shape: tuple[int] = tuple([math.ceil(d/2**i) for d in self.conv_dims_out_shape[-self.conv_dims:]]) 
-            
-            self.down_blocks[f'down{i}'] = DownBlock(
+            self.down_blocks.append(DownBlock(
                 in_channels=in_channels,
                 out_channels=down_block_out_channels,
                 conv_dims=self.conv_dims
-            )
+            ))
             
-            self.up_blocks[f'up{(self.num_up_down_blocks-i)-1}'] = UpBlock(
-                # TODO explain the 1.5
-                in_channels=int(down_block_out_channels * 1.5),
+            self.up_blocks.append(UpBlock(
+                in_channels=down_block_out_channels,
                 out_channels=in_channels,
                 conv_dims=self.conv_dims,
-                conv_dims_out_shape=conv_dims_out_shape,
-                use_conv=True
-            )
+                conv_dims_out_shape=conv_dims_out_shape
+            ))
             in_channels = down_block_out_channels

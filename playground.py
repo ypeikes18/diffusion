@@ -13,7 +13,7 @@ if __name__ == "__main__":
 
     data = MNISTDataset()
     model = Diffusion(in_channels=1, use_importance_sampling=True, training_time_steps=500, num_up_down_blocks=3)
-    train(model,data, epochs=1, batch_size=64, print_intervals=1, debug=True, lr=LEARNING_RATE)
+    train(model,data, epochs=1, batch_size=64, print_intervals=1, debug=True, lr=LEARNING_RATE, batches=200)
 
 
     img = data.train_images[5]

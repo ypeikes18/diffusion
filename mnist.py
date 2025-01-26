@@ -8,7 +8,7 @@ class MNISTDataset(Dataset):
     def __init__(self):
         (train_images, train_labels), (test_images, test_labels) = self.get_cached_mnist_data()
         # Scale to [-1, 1]
-        train_images = train_images.astype('float32') / 127.5 - 1
+        train_images = train_images.astype('float32') / 255.0
         self.train_images = t.tensor(train_images, dtype=t.float32).unsqueeze(1)
         self.train_labels = train_labels = t.tensor(train_labels, dtype=t.long)
 

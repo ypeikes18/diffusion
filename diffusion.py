@@ -19,7 +19,7 @@ class Diffusion(t.nn.Module):
         self.alpha_bars = t.cumprod(self.alphas, dim=0)
         self.sqrt_alpha_bars = t.sqrt(self.alpha_bars)
         self.sqrt_one_minus_alpha_bars = t.sqrt(1-self.alpha_bars)
-        self.subnet = UNet(in_channels=in_channels, conv_dims_out_shape=conv_dims_out_shape, num_up_down_blocks=num_up_down_blocks, conv_dims=2, channel_multiplier=64)
+        self.subnet = UNet(in_channels=in_channels, conv_dims_out_shape=conv_dims_out_shape, num_up_down_blocks=3, conv_dims=2, channel_multiplier=64)
 
 
     def forward_process(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
