@@ -2,4 +2,5 @@ venv
 mnist_cache
 __pycache__
 images/
-model_weights.pth
+models/
+mnist/

@@ -2,13 +2,18 @@ import torch as t
 import numpy as np
 from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
-from u_net import UNet
+from u_net import UNet, BasicUNet
 from time_step_sampling import TimeStepSampler
 
 
 class Diffusion(t.nn.Module):
 
-    def __init__(self, in_channels: int=1, use_importance_sampling: bool=True, training_time_steps: int=1000, conv_dims_out_shape: tuple=(28, 28), num_up_down_blocks: int=2):
+    def __init__(self, 
+    in_channels: int=1, 
+    use_importance_sampling: bool=True, 
+    training_time_steps: int=1000, 
+    conv_dims_out_shape: tuple=(28, 28), 
+    num_up_down_blocks: int=2):
         super().__init__()
         self.use_importance_sampling: bool = use_importance_sampling
         self.beta_start = 10 ** -4
@@ -19,8 +24,9 @@ class Diffusion(t.nn.Module):
         self.alpha_bars = t.cumprod(self.alphas, dim=0)
         self.sqrt_alpha_bars = t.sqrt(self.alpha_bars)
         self.sqrt_one_minus_alpha_bars = t.sqrt(1-self.alpha_bars)
-        self.subnet = UNet(in_channels=in_channels, conv_dims_out_shape=conv_dims_out_shape, num_up_down_blocks=3, conv_dims=2, channel_multiplier=64)
-
+        # TODO can I get rid of the conv_dims and just use len(conv_dims_out_shape) ?
+        self.subnet = UNet(in_channels=in_channels, conv_dims_out_shape=conv_dims_out_shape, num_up_down_blocks=num_up_down_blocks, conv_dims=2, channel_multiplier=64)
+        # self.subnet = BasicUNet(in_channels=in_channels, out_channels=in_channels)
 
     def forward_process(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
         """
@@ -49,11 +55,11 @@ class Diffusion(t.nn.Module):
         noised = t.randn(batch_size, *data_shape)
         with t.no_grad():
             for ts in range(sample_steps,0,-1):
-                predicted_image = self.forward(noised)
+                noised = self.forward(noised)
                 # noised = sqrt_alpha * x + sqrt_one_minus_alpha * noise
                 # noised - (sqrt_one_minus_alpha * noise)/sqrt_alpha = x
-                predicted_noise = predicted_image - noised
-                noised -= predicted_noise/self.sqrt_alpha_bars[ts-1]
+                # predicted_noise = predicted_image - noised
+                # noised -= predicted_noise/self.sqrt_alpha_bars[ts-1]
         self.train()
         return t.clamp(noised, -1, 1)
   
