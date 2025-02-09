@@ -3,7 +3,6 @@ import torch.nn as nn
 from torch.nn import functional as F
 from einops import einsum, rearrange
 from torch.nn.functional import softmax
-import torch.nn.functional as F
 
 
 class MultiHeadAttention(nn.Module):
@@ -44,7 +43,8 @@ class MultiHeadAttention(nn.Module):
         
         # concat the output of the attention heads
         z = rearrange(z, "b heads tokens d_k -> b tokens (heads d_k)")
-        return x + einsum(z, self.w_o, "b tokens (heads d_k), (heads d_k) d_model -> b tokens d_model")
+        z = einsum(z, self.w_o, "b tokens (heads d_k), (heads d_k) d_model -> b tokens d_model")
+        return x + self.dropout(z)
     
 
 class FeedForward(nn.Module):
@@ -52,12 +52,13 @@ class FeedForward(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.d_ff = d_ff
-        self.w_1 = nn.Parameter(t.Tensor(d_model, d_ff))
-        self.w_2 = nn.Parameter(t.Tensor(d_ff, d_model))
+        self.in_layer = nn.Linear(d_model, d_ff)
+        self.out_layer = nn.Linear(d_ff, d_model)
+        self.ln = nn.LayerNorm(d_model)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
-        out = self.w_2 @ F.gelu(self.w_1 @ x)
-        return x + out
+        out = nn.functional.gelu(self.in_layer(x))
+        return x + self.ln(self.out_layer(out))
     
 
 class Patchify(nn.Module):
@@ -71,7 +72,12 @@ class Patchify(nn.Module):
     def forward(self, x: t.Tensor) -> t.Tensor:
         # TODO add positional encoding to embeddings
         x = F.pad(x,(x.shape[-2]%self.patch_size, 0, x.shape[-1]%self.patch_size, 0))
-        x = rearrange(x, "b c h w -> b p d", p=self.patch_size**2 * self.num_channels)
+        x = rearrange(
+            x, 
+            "b c (h ph) (w pw) -> b (h w) (ph pw c)",
+            ph=self.patch_size,
+            pw=self.patch_size
+        )
         return self.projection(x)
     
 class Unpatchify(nn.Module):
@@ -79,20 +85,25 @@ class Unpatchify(nn.Module):
         super().__init__()
         self.num_channels = num_channels
         self.patch_size = patch_size
-        self.unprojection = nn.Linear(d_model, patch_size**2 * num_channels)
+        self.projection = nn.Linear(d_model, patch_size**2 * num_channels)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
-        x = self.unprojection(x)
-        x = rearrange(x, "b p d -> b c h w", p=self.patch_size**2 * self.num_channels)
+        x = self.projection(x)
+        x = rearrange(
+            x, 
+            "b (h w) (ph pw c) -> b c (h ph) (w pw)",
+            ph=self.patch_size,
+            pw=self.patch_size
+        )
         return x
         
     
 class TransformerBlock(nn.Module):
-    def __init__(self, *, d_model: int=32, num_heads: int=4, d_ff: int=64) -> None:
+    def __init__(self, *, d_model: int=32, num_heads: int=4, d_ff: int=64, d_k: int=8) -> None:
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
-        self.multi_head_attention = MultiHeadAttention(d_k=d_model, d_model=d_model, num_heads=num_heads)
+        self.multi_head_attention = MultiHeadAttention(d_k=d_k, d_model=d_model, num_heads=num_heads)
         self.feed_forward = FeedForward(d_model=d_model, d_ff=d_ff)
         self.ln0 = nn.LayerNorm(d_model)
         self.ln1 = nn.LayerNorm(d_model)
@@ -108,7 +119,7 @@ class VisionTransformer(nn.Module):
     def __init__(self, *, num_channels: int=3, num_heads: int=4, num_layers: int=4, d_model: int=32, d_ff: int=128, patch_size: int=4) -> None:
         super().__init__()
         self.patchify = Patchify(patch_size=patch_size, d_model=d_model, num_channels=num_channels)
-        self.transformer_blocks = nn.ModuleList([TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff) for _ in range(num_layers)])
+        self.transformer_blocks = nn.ModuleList([TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, d_k=d_model//num_heads) for _ in range(num_layers)])
         self.unpatchify = Unpatchify(patch_size=patch_size, d_model=d_model, num_channels=num_channels)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
