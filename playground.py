@@ -15,15 +15,14 @@ if __name__ == "__main__":
     )
 
     model = Diffusion(
-        in_channels=1, 
+        input_shape=(1, 28, 28), 
         use_importance_sampling=True, 
         training_time_steps=500, 
         num_up_down_blocks=3
     )
     print(f"num params: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    # train(model,data, epochs=1, batch_size=32, print_intervals=1, debug=True, lr=LEARNING_RATE, batches=250)
+    train(model,data, epochs=1, batch_size=32, print_intervals=1, debug=True, lr=LEARNING_RATE, batches=250)
     # t.save(model.state_dict(), "./model.pth")
-    model.load_state_dict(t.load("./model.pth"))
     x, y = next(iter(data))
     x = model.forward_process(x,t.tensor([50]))
     plt.imshow(x[0].squeeze().detach().numpy(), cmap='gray')

@@ -4,12 +4,12 @@ from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 from u_net import UNet, BasicUNet
 from time_step_sampling import TimeStepSampler
-
+from diffusion_transformer import DiffusionTransformer
 
 class Diffusion(t.nn.Module):
 
     def __init__(self, 
-    in_channels: int=1, 
+    input_shape: int=1, 
     use_importance_sampling: bool=True, 
     training_time_steps: int=1000, 
     conv_dims_out_shape: tuple=(28, 28), 
@@ -25,8 +25,8 @@ class Diffusion(t.nn.Module):
         self.sqrt_alpha_bars = t.sqrt(self.alpha_bars)
         self.sqrt_one_minus_alpha_bars = t.sqrt(1-self.alpha_bars)
         # TODO can I get rid of the conv_dims and just use len(conv_dims_out_shape) ?
-        self.subnet = UNet(in_channels=in_channels, conv_dims_out_shape=conv_dims_out_shape, num_up_down_blocks=num_up_down_blocks, conv_dims=2, channel_multiplier=64)
-        # self.subnet = BasicUNet(in_channels=in_channels, out_channels=in_channels)
+        # self.backbone = UNet(in_channels=input_shape[-3] if len(input_shape) >=3 else 1, conv_dims_out_shape=conv_dims_out_shape, num_up_down_blocks=num_up_down_blocks, conv_dims=2, channel_multiplier=64)
+        self.backbone = DiffusionTransformer(input_shape=input_shape, num_heads=4, num_layers=4, d_model=32, d_ff=128, patch_size=8)
 
     def forward_process(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
         """
@@ -44,7 +44,7 @@ class Diffusion(t.nn.Module):
 
 
     def forward(self, x):
-        return self.subnet.forward(x)
+        return self.backbone(x)
   
 
     def sample(self, sample_steps, batch_size: int=1, data_shape: tuple=(1, 28, 28)):
@@ -86,9 +86,8 @@ use_importance_sampling: bool=True):
                 break
             time_steps = time_step_sampler.sample_time_steps(batch.shape[0])
             noisy_data = model.forward_process(batch, time_steps)
-
-            predicted_batch = model.forward(noisy_data)
-
+            predicted_batch = model(noisy_data)
+            breakpoint()
             batch_losses = t.nn.MSELoss(reduction='none')(predicted_batch, batch).mean(dim=[1, 2, 3])
             # Ensure loss is a scalar
             loss = batch_losses.mean()

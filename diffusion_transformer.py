@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from einops import einsum, rearrange
 from torch.nn.functional import softmax
-
+import math
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_k: int, d_model: int, num_heads: int, dropout_prob: float=0.1) -> None:
@@ -43,7 +43,7 @@ class MultiHeadAttention(nn.Module):
         
         # concat the output of the attention heads
         z = rearrange(z, "b heads tokens d_k -> b tokens (heads d_k)")
-        z = einsum(z, self.w_o, "b tokens (heads d_k), (heads d_k) d_model -> b tokens d_model")
+        z = einsum(z, self.w_o, "b tokens d_w, d_w d_model -> b tokens d_model")
         return x + self.dropout(z)
     
 
@@ -71,35 +71,51 @@ class Patchify(nn.Module):
 
     def forward(self, x: t.Tensor) -> t.Tensor:
         # TODO add positional encoding to embeddings
-        x = F.pad(x,(x.shape[-2]%self.patch_size, 0, x.shape[-1]%self.patch_size, 0))
+        image_height = x.shape[-2]
+        image_width = x.shape[-1]
+        x = F.pad(x,(image_width%self.patch_size, 0, image_height%self.patch_size, 0))
         x = rearrange(
             x, 
-            "b c (h ph) (w pw) -> b (h w) (ph pw c)",
+            "b c (num_patches_h ph) (num_patches_w pw) -> b (num_patches_h num_patches_w) (ph pw c)",
+            num_patches_h = int(x.shape[-2] / self.patch_size),
+            num_patches_w = int(x.shape[-1] / self.patch_size),
             ph=self.patch_size,
             pw=self.patch_size
         )
-        return self.projection(x)
-    
-class Unpatchify(nn.Module):
-    def __init__(self, *, patch_size: int=4, d_model: int=32 , num_channels: int=3) -> None:
-        super().__init__()
-        self.num_channels = num_channels
-        self.patch_size = patch_size
-        self.projection = nn.Linear(d_model, patch_size**2 * num_channels)
+        res = self.projection(x)
+        return res
 
+
+class Unpatchify(nn.Module):
+    def __init__(self, *, patch_size: int=8, d_model: int=64 , output_shape: tuple) -> None:
+        super().__init__()
+        self.output_shape = output_shape
+        self.patch_size = patch_size
+        self.num_patches = math.ceil(self.output_shape[-2]/self.patch_size)*math.ceil(self.output_shape[-1]/self.patch_size)
+        self.projection = nn.Linear(
+            d_model, 
+            int(t.prod(t.tensor(self.output_shape))//self.num_patches)
+        )
+    
     def forward(self, x: t.Tensor) -> t.Tensor:
         x = self.projection(x)
+        # self.num_patches, (c h w)/num_patches = c h w
+        # c h w/num_patches 
         x = rearrange(
             x, 
-            "b (h w) (ph pw c) -> b c (h ph) (w pw)",
-            ph=self.patch_size,
-            pw=self.patch_size
+            "b patches d_patch-> b (patches d_patch)"
         )
+        x = rearrange(
+            x, 
+            "b (c h w) -> b c h w", 
+            c=self.output_shape[-3] if len(self.output_shape) >= 3 else 1, 
+            h=self.output_shape[-2], 
+            w=self.output_shape[-1])
         return x
         
     
 class TransformerBlock(nn.Module):
-    def __init__(self, *, d_model: int=32, num_heads: int=4, d_ff: int=64, d_k: int=8) -> None:
+    def __init__(self, *, d_model: int=64, num_heads: int=4, d_ff: int=128, d_k: int=16) -> None:
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -115,12 +131,13 @@ class TransformerBlock(nn.Module):
         x = self.feed_forward(x)
         return x
     
-class VisionTransformer(nn.Module):
-    def __init__(self, *, num_channels: int=3, num_heads: int=4, num_layers: int=4, d_model: int=32, d_ff: int=128, patch_size: int=4) -> None:
+
+class DiffusionTransformer(nn.Module):
+    def __init__(self, *, input_shape: tuple, num_heads: int=4, num_layers: int=4, d_model: int=32, d_ff: int=128, patch_size: int=4) -> None:
         super().__init__()
-        self.patchify = Patchify(patch_size=patch_size, d_model=d_model, num_channels=num_channels)
+        self.patchify = Patchify(patch_size=patch_size, d_model=d_model, num_channels=input_shape[-3] if len(input_shape) >=3 else 1)
         self.transformer_blocks = nn.ModuleList([TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, d_k=d_model//num_heads) for _ in range(num_layers)])
-        self.unpatchify = Unpatchify(patch_size=patch_size, d_model=d_model, num_channels=num_channels)
+        self.unpatchify = Unpatchify(patch_size=patch_size, d_model=d_model, output_shape=input_shape)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
         x = self.patchify(x)
@@ -128,9 +145,3 @@ class VisionTransformer(nn.Module):
             x = layer(x)
         x = self.unpatchify(x)
         return x
-
-    
-    
-
-
-    
