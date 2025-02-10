@@ -138,10 +138,12 @@ class DiffusionTransformer(nn.Module):
         self.patchify = Patchify(patch_size=patch_size, d_model=d_model, num_channels=input_shape[-3] if len(input_shape) >=3 else 1)
         self.transformer_blocks = nn.ModuleList([TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, d_k=d_model//num_heads) for _ in range(num_layers)])
         self.unpatchify = Unpatchify(patch_size=patch_size, d_model=d_model, output_shape=input_shape)
+        self.norm = nn.Sigmoid()
 
     def forward(self, x: t.Tensor) -> t.Tensor:
         x = self.patchify(x)
         for layer in self.transformer_blocks:
             x = layer(x)
         x = self.unpatchify(x)
+        x = self.norm(x)
         return x

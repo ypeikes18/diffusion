@@ -13,7 +13,8 @@ class Diffusion(t.nn.Module):
     use_importance_sampling: bool=True, 
     training_time_steps: int=1000, 
     conv_dims_out_shape: tuple=(28, 28), 
-    num_up_down_blocks: int=2):
+    num_up_down_blocks: int=2,
+    patch_size: int=8):
         super().__init__()
         self.use_importance_sampling: bool = use_importance_sampling
         self.beta_start = 10 ** -4
@@ -26,7 +27,7 @@ class Diffusion(t.nn.Module):
         self.sqrt_one_minus_alpha_bars = t.sqrt(1-self.alpha_bars)
         # TODO can I get rid of the conv_dims and just use len(conv_dims_out_shape) ?
         # self.backbone = UNet(in_channels=input_shape[-3] if len(input_shape) >=3 else 1, conv_dims_out_shape=conv_dims_out_shape, num_up_down_blocks=num_up_down_blocks, conv_dims=2, channel_multiplier=64)
-        self.backbone = DiffusionTransformer(input_shape=input_shape, num_heads=4, num_layers=4, d_model=32, d_ff=128, patch_size=8)
+        self.backbone = DiffusionTransformer(input_shape=input_shape, num_heads=4, num_layers=6, d_model=128, d_ff=256, patch_size=patch_size)
 
     def forward_process(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
         """
