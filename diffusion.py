@@ -87,7 +87,6 @@ use_importance_sampling: bool=True):
             time_steps = time_step_sampler.sample_time_steps(batch.shape[0])
             noisy_data = model.forward_process(batch, time_steps)
             predicted_batch = model(noisy_data)
-            breakpoint()
             batch_losses = t.nn.MSELoss(reduction='none')(predicted_batch, batch).mean(dim=[1, 2, 3])
             # Ensure loss is a scalar
             loss = batch_losses.mean()
