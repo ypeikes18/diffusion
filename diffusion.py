@@ -3,18 +3,23 @@ import numpy as np
 from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 from u_net import UNet, BasicUNet
-from time_step_sampling import TimeStepSampler
+from time_step_sampler import TimeStepSampler
 from diffusion_transformer import DiffusionTransformer
+from typing import Union
+from functools import partial
+
+
+
+def get_default_backbone(input_shape: tuple[int,...]):
+    return DiffusionTransformer(input_shape=input_shape, num_heads=4, num_layers=6, d_model=128, d_ff=256, patch_size=4)
 
 class Diffusion(t.nn.Module):
 
     def __init__(self, 
-    input_shape: int=1, 
+    input_shape: tuple[int,...],
     use_importance_sampling: bool=True, 
-    training_time_steps: int=1000, 
-    conv_dims_out_shape: tuple=(28, 28), 
-    num_up_down_blocks: int=2,
-    patch_size: int=8):
+    training_time_steps: int=1000,
+    backbone: Union[UNet, BasicUNet, DiffusionTransformer, None]=None):
         super().__init__()
         self.use_importance_sampling: bool = use_importance_sampling
         self.beta_start = 10 ** -4
@@ -25,9 +30,11 @@ class Diffusion(t.nn.Module):
         self.alpha_bars = t.cumprod(self.alphas, dim=0)
         self.sqrt_alpha_bars = t.sqrt(self.alpha_bars)
         self.sqrt_one_minus_alpha_bars = t.sqrt(1-self.alpha_bars)
-        # TODO can I get rid of the conv_dims and just use len(conv_dims_out_shape) ?
-        # self.backbone = UNet(in_channels=input_shape[-3] if len(input_shape) >=3 else 1, conv_dims_out_shape=conv_dims_out_shape, num_up_down_blocks=num_up_down_blocks, conv_dims=2, channel_multiplier=64)
-        self.backbone = DiffusionTransformer(input_shape=input_shape, num_heads=4, num_layers=6, d_model=128, d_ff=256, patch_size=patch_size)
+
+        if backbone is None:
+            self.backbone = get_default_backbone(input_shape)
+        else:
+            self.backbone = backbone
 
     def forward_process(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
         """
@@ -44,8 +51,8 @@ class Diffusion(t.nn.Module):
     
 
 
-    def forward(self, x):
-        return self.backbone(x)
+    def forward(self, x, time_steps):
+        return self.backbone(x, time_steps)
   
 
     def sample(self, sample_steps, batch_size: int=1, data_shape: tuple=(1, 28, 28)):
@@ -87,7 +94,7 @@ use_importance_sampling: bool=True):
                 break
             time_steps = time_step_sampler.sample_time_steps(batch.shape[0])
             noisy_data = model.forward_process(batch, time_steps)
-            predicted_batch = model(noisy_data)
+            predicted_batch = model(noisy_data, time_steps)
             batch_losses = t.nn.MSELoss(reduction='none')(predicted_batch, batch).mean(dim=[1, 2, 3])
             # Ensure loss is a scalar
             loss = batch_losses.mean()
