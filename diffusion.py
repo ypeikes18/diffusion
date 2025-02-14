@@ -6,12 +6,7 @@ from u_net import UNet, BasicUNet
 from time_step_sampler import TimeStepSampler
 from diffusion_transformer import DiffusionTransformer
 from typing import Union
-from functools import partial
 
-
-
-def get_default_backbone(input_shape: tuple[int,...]):
-    return DiffusionTransformer(input_shape=input_shape, num_heads=4, num_layers=6, d_model=128, d_ff=256, patch_size=4)
 
 class Diffusion(t.nn.Module):
 
@@ -32,9 +27,14 @@ class Diffusion(t.nn.Module):
         self.sqrt_one_minus_alpha_bars = t.sqrt(1-self.alpha_bars)
 
         if backbone is None:
-            self.backbone = get_default_backbone(input_shape)
+            self.backbone = self._get_default_backbone(input_shape)
         else:
             self.backbone = backbone
+
+    @staticmethod
+    def _get_default_backbone(input_shape: tuple[int,...]):
+        return DiffusionTransformer(input_shape=input_shape, num_heads=4, num_layers=6, d_model=128, d_ff=256, patch_size=4)
+
 
     def forward_process(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
         """

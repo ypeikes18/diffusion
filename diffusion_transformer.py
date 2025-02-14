@@ -6,6 +6,8 @@ from torch.nn.functional import softmax
 import math
 from patchify import Patchify, Unpatchify
 from time_step_embeddings import TimeStepEmbedder
+from positional_embeddings import PositionalEncoding
+
 DEVICE = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 class AdaLN(nn.Module):
@@ -26,9 +28,6 @@ class AdaLN(nn.Module):
         x = self.scale(time_steps).unsqueeze(1) * x + self.shift(time_steps).unsqueeze(1)
         return x
     
-class PositionalEncoding(nn.Module):
-    pass
-
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_k: int, d_model: int, num_heads: int, dropout_prob: float=0.1) -> None:
@@ -129,10 +128,11 @@ class DiffusionTransformer(nn.Module):
         self.layer_norm = nn.LayerNorm(d_model)
         self.norm = nn.Sigmoid()
         self.time_step_embedder = TimeStepEmbedder(d_embedding=d_model)
+        self.positional_encoding = PositionalEncoding(d_model=d_model)
 
     def forward(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
         x = self.patchify(x)
-        # x = self.positional_encoding(x)
+        x = self.positional_encoding(x)
         time_steps = self.time_step_embedder(time_steps)
         for layer in self.transformer_blocks:
             x = layer(x, time_steps)
