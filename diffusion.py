@@ -1,8 +1,7 @@
 import torch as t
-import numpy as np
 from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
-from u_net import UNet, BasicUNet
+from u_net import UNet
 from time_step_sampler import TimeStepSampler
 from diffusion_transformer import DiffusionTransformer
 from typing import Union
@@ -14,7 +13,7 @@ class Diffusion(t.nn.Module):
     input_shape: tuple[int,...],
     use_importance_sampling: bool=True, 
     training_time_steps: int=1000,
-    backbone: Union[UNet, BasicUNet, DiffusionTransformer, None]=None):
+    backbone: Union[UNet, DiffusionTransformer, None]=None):
         super().__init__()
         self.use_importance_sampling: bool = use_importance_sampling
         self.beta_start = 10 ** -4
