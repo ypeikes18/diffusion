@@ -1,11 +1,7 @@
 import torch as t
-from torch.utils.data import DataLoader, Dataset
-import torch.nn as nn
 from u_net import UNet
-from time_step_sampler import TimeStepSampler
 from diffusion_transformer import DiffusionTransformer
 from typing import Union
-
 
 class Diffusion(t.nn.Module):
 
@@ -13,7 +9,8 @@ class Diffusion(t.nn.Module):
     input_shape: tuple[int,...],
     use_importance_sampling: bool=True, 
     training_time_steps: int=1000,
-    backbone: Union[UNet, DiffusionTransformer, None]=None):
+    backbone: Union[UNet, DiffusionTransformer, None]=None,
+    d_guidance_input: int=1):
         super().__init__()
         self.use_importance_sampling: bool = use_importance_sampling
         self.beta_start = 10 ** -4
@@ -32,7 +29,14 @@ class Diffusion(t.nn.Module):
 
     @staticmethod
     def _get_default_backbone(input_shape: tuple[int,...]):
-        return DiffusionTransformer(input_shape=input_shape, num_heads=4, num_layers=6, d_model=128, d_ff=256, patch_size=4)
+        return DiffusionTransformer(
+            input_shape=input_shape, 
+            num_heads=4, 
+            num_layers=6, 
+            d_model=128, 
+            d_ff=256, 
+            patch_size=4
+        )
 
 
     def forward_process(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
@@ -49,9 +53,8 @@ class Diffusion(t.nn.Module):
         return res
     
 
-
-    def forward(self, x, time_steps):
-        return self.backbone(x, time_steps)
+    def forward(self, x, time_steps, guidance=None):
+        return self.backbone(x, time_steps, guidance)
   
 
     def sample(self, sample_steps, batch_size: int=1, data_shape: tuple=(1, 28, 28)):
@@ -70,42 +73,3 @@ class Diffusion(t.nn.Module):
         self.train()
         return t.clamp(noised, -1, 1)
   
-
-def train(model,
-data: Dataset, 
-epochs: int=1, 
-batch_size: int=64, 
-print_intervals: int=1, 
-debug: bool=False, 
-batches: int=float('inf'), 
-time_steps: int=None, 
-lr: float=1e-4,
-use_importance_sampling: bool=True):
-    data = DataLoader(data, batch_size=batch_size, shuffle=True)
-    
-    optimizer = t.optim.Adam(model.parameters(), lr=lr)
-    time_step_sampler = TimeStepSampler(model.training_time_steps, use_importance_sampling=use_importance_sampling)
-    model.losses = []
-
-    for epoch in range(epochs):
-        for i ,(batch, labels) in enumerate(data):
-            if i >= batches:
-                break
-            time_steps = time_step_sampler.sample_time_steps(batch.shape[0])
-            noisy_data = model.forward_process(batch, time_steps)
-            predicted_batch = model(noisy_data, time_steps)
-            batch_losses = t.nn.MSELoss(reduction='none')(predicted_batch, batch).mean(dim=[1, 2, 3])
-            # Ensure loss is a scalar
-            loss = batch_losses.mean()
-            
-            if use_importance_sampling:
-                time_step_sampler.update_losses(time_steps.detach().numpy(), batch_losses.detach().numpy())
-            
-            model.losses.append(loss.detach().numpy())
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            if i % print_intervals == 0:
-                print(f"Epoch [{epoch+1}/{epochs}], Batch [{i+1}/{batches}], Loss: {loss.item():.4f}")

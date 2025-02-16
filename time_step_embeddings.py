@@ -3,6 +3,7 @@ import torch.nn as nn
 from functools import lru_cache
 import math
 from einops import rearrange
+
 # based largely on https://github.com/facebookresearch/DiT/blob/ed81ce2229091fd4ecc9a223645f95cf379d582b/models.py#L27
 
 class TimeStepEmbedder(nn.Module):
@@ -22,6 +23,10 @@ class TimeStepEmbedder(nn.Module):
         
 
     def get_timestep_embedding(self, timesteps: t.Tensor) -> t.Tensor:
+        """
+        :param timesteps: (batch_size,)
+        :return: (batch_size, d_embedding)
+        """
         half_dims = self.frequency_embedding_size // 2
         frequency_embeddings = t.exp(
             t.arange(start=0, end=half_dims) * 

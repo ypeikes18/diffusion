@@ -7,25 +7,31 @@ import math
 from patchify import Patchify, Unpatchify
 from time_step_embeddings import TimeStepEmbedder
 from positional_embeddings import PositionalEncoding
+from typing import Optional
 
 DEVICE = t.device("cuda" if t.cuda.is_available() else "cpu")
 
+# Diffusion Transformer and Adaptive Layer Norm based on "Scalable Diffusion Models With Transformers"
+#  https://arxiv.org/pdf/2212.09748 
+
 class AdaLN(nn.Module):
-    def __init__(self, d_model: int) -> None:
+    def __init__(self, d_model: int, d_time_steps: int, d_guidance: int) -> None:
         super().__init__()
         self.d_model = d_model
         self.ln = nn.LayerNorm(d_model)
-        self.scale = nn.Linear(d_model, d_model)
-        self.shift = nn.Linear(d_model, d_model)
+        self.scale = nn.Linear(d_time_steps + d_guidance, d_model)
+        self.shift = nn.Linear(d_time_steps + d_guidance, d_model)
 
-    def forward(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
+    def forward(self, x: t.Tensor, time_steps: t.Tensor, guidance: t.Tensor) -> t.Tensor:
         """
         :param x: (batch_size, num_tokens, d_model)
-        :param time_steps: (batch_size, 1)
+        :param time_steps: (batch_size, d_time_steps)
+        :param guidance: (batch_size, d_guidance)
         :return: (batch_size, num_tokens, d_model)
         """
         x = self.ln(x)
-        x = self.scale(time_steps).unsqueeze(1) * x + self.shift(time_steps).unsqueeze(1)
+        conditioning = t.concat([time_steps, guidance], dim=-1)
+        x = self.scale(conditioning).unsqueeze(1) * x + self.shift(conditioning).unsqueeze(1)
         return x
     
 
@@ -108,35 +114,47 @@ class TransformerBlock(nn.Module):
         self.num_heads = num_heads
         self.multi_head_attention = MultiHeadAttention(d_k=d_k, d_model=d_model, num_heads=num_heads, dropout_prob=dropout_prob)
         self.feed_forward = FeedForward(d_model=d_model, d_ff=d_ff, dropout_prob=dropout_prob)
-        self.ln0 = AdaLN(d_model=d_model)
-        self.ln1 = AdaLN(d_model=d_model)
+        self.ln0 = AdaLN(d_model=d_model, d_time_steps=d_model, d_guidance=d_model)
+        self.ln1 = AdaLN(d_model=d_model, d_time_steps=d_model, d_guidance=d_model)
 
-    def forward(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
-        x = self.ln0(x, time_steps)
+    def forward(self, x: t.Tensor, time_steps: t.Tensor, guidance: Optional[t.Tensor]=None) -> t.Tensor:
+        x = self.ln0(x, time_steps, guidance)
         x = self.multi_head_attention(x)
-        x = self.ln1(x, time_steps)
+        x = self.ln1(x, time_steps, guidance)
         x = self.feed_forward(x)
         return x
     
 
 class DiffusionTransformer(nn.Module):
-    def __init__(self, *, input_shape: tuple, num_heads: int=4, num_layers: int=4, d_model: int=32, d_ff: int=128, patch_size: int=4, dropout_prob: float=0.1) -> None:
+    def __init__(self, *, 
+    input_shape: tuple, 
+    num_heads: int=4, 
+    num_layers: int=4, 
+    d_model: int=32, 
+    d_ff: int=128, 
+    patch_size: int=4, 
+    dropout_prob: float=0.1
+    ) -> None:
         super().__init__()
+        self.d_model = d_model
         self.patchify = Patchify(patch_size=patch_size, d_model=d_model, num_channels=input_shape[-3] if len(input_shape) >=3 else 1)
         self.transformer_blocks = nn.ModuleList([TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, d_k=d_model//num_heads, dropout_prob=dropout_prob) for _ in range(num_layers)])
         self.unpatchify = Unpatchify(patch_size=patch_size, d_model=d_model, output_shape=input_shape)
-        self.layer_norm = nn.LayerNorm(d_model)
+        self.layer_norm = AdaLN(d_model=d_model, d_time_steps=d_model, d_guidance=d_model)
         self.norm = nn.Sigmoid()
         self.time_step_embedder = TimeStepEmbedder(d_embedding=d_model)
         self.positional_encoding = PositionalEncoding(d_model=d_model)
 
-    def forward(self, x: t.Tensor, time_steps: t.Tensor) -> t.Tensor:
+    def forward(self, 
+    x: t.Tensor, 
+    time_steps: t.Tensor, 
+    guidance: t.Tensor) -> t.Tensor:
         x = self.patchify(x)
         x = self.positional_encoding(x)
         time_steps = self.time_step_embedder(time_steps)
         for layer in self.transformer_blocks:
-            x = layer(x, time_steps)
-        x = self.layer_norm(x)
+            x = layer(x, time_steps, guidance)
+        x = self.layer_norm(x, time_steps, guidance)
         x = self.unpatchify(x)
         x = self.norm(x)
         return x
