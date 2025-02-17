@@ -54,6 +54,11 @@ class Diffusion(t.nn.Module):
     
 
     def forward(self, x, time_steps, guidance=None):
+        """
+        :param x: tensor with shape (batch, channels, d_image, d_image)
+        :param time_steps: tensor with shape (batch, d_conditioning)
+        :param guidance: tensor with shape (batch, d_conditioning)
+        """
         return self.backbone(x, time_steps, guidance)
   
 

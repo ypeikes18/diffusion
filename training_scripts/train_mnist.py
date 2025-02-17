@@ -45,6 +45,7 @@ class MNISTGuidanceEmbedder(nn.Module):
 
 
 def train(model,
+guidance_embedder: MNISTGuidanceEmbedder,
 data: Dataset, 
 epochs: int=1, 
 batch_size: int=64, 
@@ -104,7 +105,14 @@ if __name__ == "__main__":
         training_time_steps=500, 
     )
 
-    train(model, data, epochs=2, batch_size=64, print_intervals=1, debug=True, lr=7e-5)
+    embedder = MNISTGuidanceEmbedder(model.backbone.d_model)
+    model.load_state_dict(t.load("weights/model_with_guidance_2.pth"))
+    embedder.load_state_dict(t.load("weights/guidance_embedder_2.pth"))
+    train(
+        model,embedder, data, epochs=2, 
+        batch_size=64, print_intervals=5, 
+        debug=True, lr=2e-5
+    )
 
-    model.save("weights/model_with_guidance_2.pth")
-    
+    t.save(model.state_dict(), "weights/model_with_guidance_2.pth")
+    t.save(embedder.state_dict(), "weights/guidance_embedder_2.pth")

@@ -18,6 +18,6 @@ class PositionalEncoding(nn.Module):
 
         pe = t.zeros_like(func_args, requires_grad=False)
         pe[:, ::2] += t.sin(func_args[:,::2])
-        pe[:, ::2] += t.cos(func_args[:,1::2])
+        pe[:, 1::2] += t.cos(func_args[:,1::2])
         
         return x + pe
