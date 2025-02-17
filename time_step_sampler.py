@@ -2,8 +2,8 @@ import torch as t
 from collections import deque
 
 
-type TimeStep = int
-type Loss = float
+TimeStep = int
+Loss = float
 
 # use_importance_sampling=True implements importance sampling as described in https://arxiv.org/pdf/2102.09672 
 class TimeStepSampler:

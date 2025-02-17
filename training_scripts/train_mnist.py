@@ -78,7 +78,7 @@ guidance_free_prob: float=0.1):
             if i >= batches:
                 break
 
-            time_steps = time_step_sampler.sample_time_steps(batch.shape[0])
+            time_steps = time_step_sampler.sample_time_steps(batch.shape[0]).to(DEVICE)
             one_hot_labels = nums_to_one_hot(labels.long(), 10)
             guidance = guidance_embedder(one_hot_labels, guidance_free_prob)
 
