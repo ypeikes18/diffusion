@@ -7,6 +7,8 @@ from diffusion import Diffusion
 import torchvision
 import torchvision.transforms as transforms
 
+DEVICE = t.device("cuda" if t.cuda.is_available() else "cpu")
+
 def nums_to_one_hot(nums: t.Tensor, d_input: int) -> t.Tensor:
     """
     :param nums: (batch_size,)
@@ -58,7 +60,9 @@ use_importance_sampling: bool=True,
 guidance_free_prob: float=0.1):
     data = DataLoader(data, batch_size=batch_size, shuffle=True)
     
-    guidance_embedder = MNISTGuidanceEmbedder(model.backbone.d_model)
+    model = model.to(DEVICE)
+    guidance_embedder = MNISTGuidanceEmbedder(model.backbone.d_model).to(DEVICE)
+
     optimizer = t.optim.Adam(
         list(model.parameters()) + list(guidance_embedder.parameters()),
         lr=lr
@@ -68,6 +72,8 @@ guidance_free_prob: float=0.1):
 
     for epoch in range(epochs):
         for i ,(batch, labels) in enumerate(data):
+            
+            batch, labels = batch.to(DEVICE), labels.to(DEVICE)
 
             if i >= batches:
                 break
